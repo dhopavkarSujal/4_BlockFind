@@ -1,0 +1,96 @@
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum AssetType {
+  LOST
+  FOUND
+}
+
+enum AssetStatus {
+  OPEN
+  CLAIM_PENDING
+  RECOVERED
+  CLOSED
+}
+
+enum ClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model User {
+  id           String           @id @default(uuid()) @db.Uuid
+  name         String
+  email        String           @unique
+  passwordHash String
+  role         UserRole         @default(USER)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  assets           Asset[]          @relation("ReportedAssets")
+  claims           Claim[]          @relation("UserClaims")
+  recoveryRecords  RecoveryRecord[] @relation("RecordedRecoveries")
+}
+
+model Asset {
+  id           String      @id @default(uuid()) @db.Uuid
+  title        String
+  description  String?
+  category     String
+  location     String?
+  type         AssetType
+  status       AssetStatus @default(OPEN)
+  reportedById String      @db.Uuid
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  reportedBy User    @relation("ReportedAssets", fields: [reportedById], references: [id], onDelete: Restrict)
+  claims     Claim[]
+  recovery   RecoveryRecord?
+  
+  @@index([type, status])
+  @@index([category])
+  @@index([reportedById])
+}
+
+model Claim {
+  id          String      @id @default(uuid()) @db.Uuid
+  assetId     String      @db.Uuid
+  claimantId  String      @db.Uuid
+  details     String?
+  status      ClaimStatus @default(PENDING)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  asset    Asset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  claimant User  @relation("UserClaims", fields: [claimantId], references: [id], onDelete: Restrict)
+
+  @@index([assetId, status])
+  @@index([claimantId])
+}
+
+model RecoveryRecord {
+  id           String   @id @default(uuid()) @db.Uuid
+  assetId      String   @unique @db.Uuid
+  recordedById String   @db.Uuid
+  recoveredAt  DateTime @default(now())
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  asset      Asset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  recordedBy User  @relation("RecordedRecoveries", fields: [recordedById], references: [id], onDelete: Restrict)
+}

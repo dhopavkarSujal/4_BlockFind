@@ -1,15 +1,15 @@
+
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Landing from '../pages/Landing'
+import Login from '../pages/Login'
+import Register from '../pages/Register'
 
 export default function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
-
-      {/* These pages will be implemented in a later step. */}
-      <Route path="/login" element={<Navigate to="/" replace />} />
-      <Route path="/register" element={<Navigate to="/" replace />} />
-
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
