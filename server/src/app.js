@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.routes.js'
 import assetRoutes from './routes/asset.routes.js';
 import lostReportRoutes from './routes/lost-report.routes.js';
 import foundItemRoutes from './routes/found-item.routes.js';
+import claimRoutes from './routes/claim.routes.js';
 
 const app = express()
 
@@ -48,4 +49,5 @@ app.use('/api/auth', authRoutes)
 app.use('/api/assets', assetRoutes);
 app.use('/api/lost-reports', lostReportRoutes);
 app.use('/api/found-items', foundItemRoutes);
+app.use('/api/claims', claimRoutes);
 export default app
