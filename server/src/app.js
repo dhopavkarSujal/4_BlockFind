@@ -3,7 +3,7 @@ import express from 'express'
 import cors from 'cors'
 import prisma from './db/prisma.js'
 import authRoutes from './routes/auth.routes.js'
-
+import assetRoutes from './routes/asset.routes.js';
 const app = express()
 
 app.use(
@@ -42,5 +42,6 @@ app.get('/api/health/db', async (req, res) => {
 })
 
 app.use('/api/auth', authRoutes)
+app.use('/api/assets', assetRoutes);
 
 export default app

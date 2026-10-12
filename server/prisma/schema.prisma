@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -10,40 +9,54 @@ datasource db {
 
 enum UserRole {
   USER
+  VERIFIER
   ADMIN
 }
 
-enum AssetType {
-  LOST
-  FOUND
+enum AssetStatus {
+  ACTIVE
+  ARCHIVED
 }
 
-enum AssetStatus {
+enum LostReportStatus {
   OPEN
   CLAIM_PENDING
-  RECOVERED
+  RESOLVED
+  CLOSED
+}
+
+enum FoundItemStatus {
+  IN_CUSTODY
+  CLAIM_PENDING
+  RELEASED
   CLOSED
 }
 
 enum ClaimStatus {
   PENDING
+  IN_REVIEW
   APPROVED
   REJECTED
   CANCELLED
 }
 
 model User {
-  id           String           @id @default(uuid()) @db.Uuid
+  id           String   @id @default(uuid()) @db.Uuid
   name         String
-  email        String           @unique
+  email        String   @unique
   passwordHash String
-  role         UserRole         @default(USER)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  role         UserRole @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  assets           Asset[]          @relation("ReportedAssets")
-  claims           Claim[]          @relation("UserClaims")
-  recoveryRecords  RecoveryRecord[] @relation("RecordedRecoveries")
+  ownedAssets        Asset[]          @relation("AssetOwner")
+  lostReports        LostReport[]     @relation("LostReportReporter")
+  recordedFoundItems FoundItem[]      @relation("FoundItemRecorder")
+  claims             Claim[]          @relation("Claimant")
+  reviewedClaims     Claim[]          @relation("ClaimReviewer")
+  recoveryRecords    RecoveryRecord[] @relation("RecoveryRecorder")
+  auditLogs          AuditLog[]       @relation("AuditActor")
+  uploadedEvidence   ClaimEvidence[]  @relation("EvidenceUploader")
 }
 
 model Asset {
@@ -51,46 +64,135 @@ model Asset {
   title        String
   description  String?
   category     String
-  location     String?
-  type         AssetType
-  status       AssetStatus @default(OPEN)
-  reportedById String      @db.Uuid
+  brand        String?
+  model        String?
+  serialNumber String?
+  status       AssetStatus @default(ACTIVE)
+  ownerId      String      @db.Uuid
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
 
-  reportedBy User    @relation("ReportedAssets", fields: [reportedById], references: [id], onDelete: Restrict)
+  owner       User         @relation("AssetOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  lostReports LostReport[]
+
+  @@index([ownerId, status])
+  @@index([category])
+}
+
+model LostReport {
+  id           String           @id @default(uuid()) @db.Uuid
+  assetId      String           @db.Uuid
+  reportedById String           @db.Uuid
+  description  String?
+  location     String
+  lostAt       DateTime?
+  status       LostReportStatus @default(OPEN)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  asset      Asset   @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  reportedBy User    @relation("LostReportReporter", fields: [reportedById], references: [id], onDelete: Restrict)
+  claims     Claim[]
+
+  @@index([assetId, status])
+  @@index([reportedById, status])
+  @@index([status, createdAt])
+}
+
+model FoundItem {
+  id           String          @id @default(uuid()) @db.Uuid
+  title        String
+  description  String?
+  category     String
+  brand        String?
+  model        String?
+  location     String
+  foundAt      DateTime?
+  status       FoundItemStatus @default(IN_CUSTODY)
+  recordedById String          @db.Uuid
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  recordedBy User            @relation("FoundItemRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
   claims     Claim[]
   recovery   RecoveryRecord?
-  
-  @@index([type, status])
-  @@index([category])
-  @@index([reportedById])
+
+  @@index([category, status])
+  @@index([status, createdAt])
+  @@index([recordedById])
 }
 
 model Claim {
-  id          String      @id @default(uuid()) @db.Uuid
-  assetId     String      @db.Uuid
-  claimantId  String      @db.Uuid
-  details     String?
-  status      ClaimStatus @default(PENDING)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id            String      @id @default(uuid()) @db.Uuid
+  lostReportId  String      @db.Uuid
+  foundItemId   String      @db.Uuid
+  claimantId    String      @db.Uuid
+  details       String?
+  status        ClaimStatus @default(PENDING)
+  reviewedById  String?     @db.Uuid
+  reviewedAt    DateTime?
+  decisionNotes String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
-  asset    Asset @relation(fields: [assetId], references: [id], onDelete: Restrict)
-  claimant User  @relation("UserClaims", fields: [claimantId], references: [id], onDelete: Restrict)
+  lostReport LostReport      @relation(fields: [lostReportId], references: [id], onDelete: Restrict)
+  foundItem  FoundItem       @relation(fields: [foundItemId], references: [id], onDelete: Restrict)
+  claimant   User            @relation("Claimant", fields: [claimantId], references: [id], onDelete: Restrict)
+  reviewedBy User?           @relation("ClaimReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  evidence   ClaimEvidence[]
+  recovery   RecoveryRecord?
 
-  @@index([assetId, status])
-  @@index([claimantId])
+  @@index([lostReportId, status])
+  @@index([foundItemId, status])
+  @@index([claimantId, status])
+  @@index([reviewedById])
+}
+
+model ClaimEvidence {
+  id               String   @id @default(uuid()) @db.Uuid
+  claimId          String   @db.Uuid
+  uploadedById     String   @db.Uuid
+  storageKey       String   @unique
+  originalFileName String
+  mimeType         String
+  sizeBytes        Int
+  sha256Hash       String?
+  createdAt        DateTime @default(now())
+
+  claim      Claim @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  uploadedBy User  @relation("EvidenceUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+
+  @@index([claimId])
 }
 
 model RecoveryRecord {
   id           String   @id @default(uuid()) @db.Uuid
-  assetId      String   @unique @db.Uuid
+  claimId      String   @unique @db.Uuid
+  foundItemId  String   @unique @db.Uuid
   recordedById String   @db.Uuid
   recoveredAt  DateTime @default(now())
   notes        String?
   createdAt    DateTime @default(now())
 
-  asset      Asset @relation(fields: [assetId], references: [id], onDelete: Restrict)
-  recordedBy User  @relation("RecordedRecoveries", fields: [recordedById], references: [id], onDelete: Restrict)
+  claim      Claim     @relation(fields: [claimId], references: [id], onDelete: Restrict)
+  foundItem  FoundItem @relation(fields: [foundItemId], references: [id], onDelete: Restrict)
+  recordedBy User      @relation("RecoveryRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+
+  @@index([recordedById])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  entityType String
+  entityId   String?
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }
