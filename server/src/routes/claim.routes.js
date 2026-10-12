@@ -3,6 +3,7 @@ import { Router } from 'express';
 
 import { authenticateToken } from '../middleware/auth.middleware.js';
 import { authorizeRoles } from '../middleware/role.middleware.js';
+import { uploadEvidenceFile } from '../middleware/evidence-upload.middleware.js';
 
 import {
   submitClaim,
@@ -14,23 +15,46 @@ import {
   cancelClaim,
 } from '../controllers/claim.controller.js';
 
+import {
+  uploadClaimEvidence,
+  listClaimEvidence,
+  createClaimEvidenceDownloadUrl,
+} from '../controllers/claim-evidence.controller.js';
+
 const router = Router();
 
 // Authentication is required for every claim endpoint.
 router.use(authenticateToken);
 
-// User endpoints
+// User claim endpoints
 router.post('/', submitClaim);
 router.get('/my', listMyClaims);
+router.post('/:id/cancel', cancelClaim);
 
-// Restrict the review queue to verifiers and admins.
+// Claim evidence endpoints
+router.post(
+  '/:id/evidence',
+  uploadEvidenceFile,
+  uploadClaimEvidence,
+);
+
+router.get(
+  '/:id/evidence',
+  listClaimEvidence,
+);
+
+router.get(
+  '/:id/evidence/:evidenceId/download',
+  createClaimEvidenceDownloadUrl,
+);
+
+// Verifier/admin endpoints
 router.get(
   '/review-queue',
   authorizeRoles('VERIFIER', 'ADMIN'),
   listClaimsForReview,
 );
 
-// Review actions
 router.post(
   '/:id/start-review',
   authorizeRoles('VERIFIER', 'ADMIN'),
@@ -43,9 +67,7 @@ router.patch(
   decideClaim,
 );
 
-// Claim detail and cancellation
-router.post('/:id/cancel', cancelClaim);
+// Keep the general claim-detail route last.
 router.get('/:id', getClaim);
 
-// IMPORTANT: app.js imports this router as a default export.
 export default router;
