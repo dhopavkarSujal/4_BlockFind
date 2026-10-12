@@ -5,6 +5,7 @@ import prisma from './db/prisma.js'
 import authRoutes from './routes/auth.routes.js'
 import assetRoutes from './routes/asset.routes.js';
 import lostReportRoutes from './routes/lost-report.routes.js';
+import foundItemRoutes from './routes/found-item.routes.js';
 
 const app = express()
 
@@ -46,5 +47,5 @@ app.get('/api/health/db', async (req, res) => {
 app.use('/api/auth', authRoutes)
 app.use('/api/assets', assetRoutes);
 app.use('/api/lost-reports', lostReportRoutes);
-
+app.use('/api/found-items', foundItemRoutes);
 export default app
