@@ -322,6 +322,13 @@ export async function reviewClaim(
 
     ensureClaimCanBeReviewed(claim);
 
+    if (claim.status !== 'IN_REVIEW') {
+      throw new ClaimServiceError(
+        'Start claim review before making a decision',
+        409,
+      );
+    }
+
     const reviewedAt = new Date();
 
     if (decision === 'APPROVED') {
