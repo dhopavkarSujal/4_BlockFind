@@ -1,6 +1,6 @@
-
 import { createHash, randomUUID } from 'node:crypto';
 import { fileTypeFromBuffer } from 'file-type';
+import { recordAuditEvent } from './audit-log.service.js';
 
 import prisma from '../db/prisma.js';
 import {
@@ -176,7 +176,8 @@ export async function uploadClaimEvidence(claimId, requester, file) {
       );
     }
 
-    const evidence = await prisma.claimEvidence.create({
+    const evidence = await prisma.$transaction(async (tx) => {
+    const createdEvidence = await tx.claimEvidence.create({
       data: {
         id: evidenceId,
         claimId,
@@ -190,6 +191,23 @@ export async function uploadClaimEvidence(claimId, requester, file) {
       select: PUBLIC_EVIDENCE_SELECT,
     });
 
+    await recordAuditEvent(tx, {
+      actorId: requester.id,
+      action: 'CLAIM_EVIDENCE_UPLOADED',
+      entityType: 'ClaimEvidence',
+      entityId: createdEvidence.id,
+      details: {
+        claimId,
+        mimeType: detectedType.mime,
+        sizeBytes: file.size,
+        sha256Hash,
+      },
+    });
+
+    return createdEvidence;
+  });
+
+return evidence;
     return evidence;
   } catch (error) {
     // The database and object store do not share a transaction. Remove the
@@ -257,6 +275,16 @@ export async function getClaimEvidenceDownloadUrl(
     );
   }
 
+  await recordAuditEvent(prisma, {
+    actorId: requester.id,
+    action: 'CLAIM_EVIDENCE_DOWNLOAD_LINK_CREATED',
+    entityType: 'ClaimEvidence',
+    entityId: evidence.id,
+    details: {
+      claimId,
+      expiresInSeconds: SIGNED_URL_SECONDS,
+    },
+  });
   return {
     evidence: publicEvidence(evidence),
     signedUrl: data.signedUrl,

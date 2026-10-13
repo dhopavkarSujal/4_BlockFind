@@ -1,4 +1,4 @@
-
+import { recordAuditEvent } from './audit-log.service.js';
 import prisma from '../db/prisma.js';
 
 const ACTIVE_CLAIM_STATUSES = ['PENDING', 'IN_REVIEW'];
@@ -204,7 +204,17 @@ export async function createClaim({
       where: { id: foundItemId },
       data: { status: 'CLAIM_PENDING' },
     });
-
+    
+    await recordAuditEvent(tx, {
+      actorId: claimantId,
+      action: 'CLAIM_SUBMITTED',
+      entityType: 'Claim',
+      entityId: claim.id,
+      details: {
+        lostReportId,
+        foundItemId,
+      },
+    });
     return tx.claim.findUnique({
       where: { id: claim.id },
       include: CLAIM_INCLUDE,
@@ -279,6 +289,16 @@ export async function startClaimReview(id, reviewerId) {
       },
     });
 
+    await recordAuditEvent(tx, {
+      actorId: reviewerId,
+      action: 'CLAIM_REVIEW_STARTED',
+      entityType: 'Claim',
+      entityId: id,
+      details: {
+        status: 'IN_REVIEW',
+      },
+    });
+
     return tx.claim.findUnique({
       where: { id },
       include: CLAIM_INCLUDE,
@@ -332,7 +352,7 @@ export async function reviewClaim(
         data: { status: 'RELEASED' },
       });
 
-      await tx.recoveryRecord.create({
+            const recoveryRecord = await tx.recoveryRecord.create({
         data: {
           claimId: id,
           foundItemId: claim.foundItemId,
@@ -341,6 +361,17 @@ export async function reviewClaim(
           notes:
             decisionNotes ??
             'Claim approved and item released after verification.',
+        },
+      });
+
+      await recordAuditEvent(tx, {
+        actorId: reviewerId,
+        action: 'RECOVERY_RECORDED',
+        entityType: 'RecoveryRecord',
+        entityId: recoveryRecord.id,
+        details: {
+          claimId: id,
+          foundItemId: claim.foundItemId,
         },
       });
     } else {
@@ -365,7 +396,20 @@ export async function reviewClaim(
         decisionNotes: decisionNotes ?? null,
       },
     });
-
+    await recordAuditEvent(tx, {
+      actorId: reviewerId,
+      action:
+        decision === 'APPROVED'
+          ? 'CLAIM_APPROVED'
+          : 'CLAIM_REJECTED',
+      entityType: 'Claim',
+      entityId: id,
+      details: {
+        lostReportId: claim.lostReportId,
+        foundItemId: claim.foundItemId,
+        decisionNotes: decisionNotes ?? null,
+      },
+    });
     return tx.claim.findUnique({
       where: { id },
       include: CLAIM_INCLUDE,
@@ -424,6 +468,16 @@ export async function cancelClaim(id, claimantId) {
       },
     });
 
+    await recordAuditEvent(tx, {
+      actorId: claimantId,
+      action: 'CLAIM_CANCELLED',
+      entityType: 'Claim',
+      entityId: id,
+      details: {
+        lostReportId: claim.lostReportId,
+        foundItemId: claim.foundItemId,
+      },
+    });
     return tx.claim.findUnique({
       where: { id },
       include: CLAIM_INCLUDE,
