@@ -2,6 +2,10 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Logo from '../components/common/Logo'
+import {
+  saveAuthSession,
+  getRoleHomePath,
+} from '../utils/auth-session.js';
 import { loginUser } from '../services/auth.service'
 
 export default function Login() {
@@ -27,17 +31,23 @@ export default function Login() {
     try {
       const data = await loginUser(form)
 
-      // Temporary storage; we'll improve session handling next.
-      sessionStorage.setItem('blockfind_token', data.token)
-      sessionStorage.setItem('blockfind_user', JSON.stringify(data.user))
+      if (!data?.token || !data?.user) {
+        throw new Error('Login succeeded, but the server did not return valid session details.')
+      }
 
-      navigate('/')
+      saveAuthSession(data.token, data.user);
+      navigate(getRoleHomePath(data.user.role), {
+        replace: true,
+      });
+
+      navigate('/dashboard', { replace: true })
     } catch (err) {
       setError(err.message || 'Unable to sign in. Please try again.')
     } finally {
       setLoading(false)
     }
   }
+
 
   return (
     <main className="flex min-h-[75vh] items-center justify-center px-4 py-12">
