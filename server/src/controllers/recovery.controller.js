@@ -4,14 +4,20 @@ import {
   listMyRecoveries as fetchMyRecoveries,
   listRecoveries as fetchRecoveries,
   getRecoveryById as fetchRecoveryById,
+  recordHandover as createHandover,
 } from '../services/recovery.service.js';
 
 import {
   recoveryIdSchema,
   recoveryPaginationSchema,
+  recordHandoverSchema,
 } from '../validators/recovery.validation.js';
 
-function sendError(res, error) {
+function sendError(
+  res,
+  error,
+  fallbackMessage = 'Could not retrieve recovery records',
+) {
   if (error instanceof RecoveryServiceError) {
     return res.status(error.statusCode).json({
       success: false,
@@ -23,7 +29,7 @@ function sendError(res, error) {
 
   return res.status(500).json({
     success: false,
-    message: 'Could not retrieve recovery records',
+    message: fallbackMessage,
   });
 }
 
@@ -94,5 +100,33 @@ export async function getRecovery(req, res) {
     });
   } catch (error) {
     return sendError(res, error);
+  }
+}
+
+export async function recordHandover(req, res) {
+  const parsed = recordHandoverSchema.safeParse(req.body);
+
+  if (!parsed.success) {
+    return sendValidationError(res, parsed.error);
+  }
+
+  try {
+    const recovery = await createHandover(
+      parsed.data.claimId,
+      req.user.id,
+      parsed.data.notes,
+    );
+
+    return res.status(201).json({
+      success: true,
+      message: 'Physical handover recorded successfully',
+      recovery,
+    });
+  } catch (error) {
+    return sendError(
+      res,
+      error,
+      'Could not record the physical handover',
+    );
   }
 }

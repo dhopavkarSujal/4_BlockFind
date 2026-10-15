@@ -1,0 +1,26 @@
+{
+  "name": "4_blockfind",
+  "version": "1.0.0",
+  "description": "BlockFind is a web application that helps people register assets, report lost belongings, record found items, and recover assets through a verified ownership-claim process.",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently -k -n SERVER,CLIENT \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dhopavkarSujal/4_BlockFind.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/dhopavkarSujal/4_BlockFind/issues"
+  },
+  "homepage": "https://github.com/dhopavkarSujal/4_BlockFind#readme",
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}

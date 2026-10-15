@@ -141,13 +141,13 @@ model Claim {
   updatedAt     DateTime    @updatedAt
   decisionNotes String?
   foundItemId   String      @db.Uuid
-  lostReportId  String      @db.Uuid
+  lostReportId  String?     @db.Uuid
   reviewedAt    DateTime?
   reviewedById  String?     @db.Uuid
 
   claimant   User            @relation("Claimant", fields: [claimantId], references: [id])
   foundItem  FoundItem       @relation(fields: [foundItemId], references: [id])
-  lostReport LostReport      @relation(fields: [lostReportId], references: [id])
+  lostReport LostReport?     @relation(fields: [lostReportId], references: [id])
   reviewedBy User?           @relation("ClaimReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
   evidence   ClaimEvidence[]
   recovery   RecoveryRecord?
@@ -242,8 +242,9 @@ enum FoundReportStatus {
 
 enum ClaimStatus {
   PENDING
+  IN_REVIEW
   APPROVED
   REJECTED
   CANCELLED
-  IN_REVIEW
+  COMPLETED
 }
