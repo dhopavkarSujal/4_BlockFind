@@ -1,10 +1,11 @@
-
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   createFoundItem,
   getFoundItems,
 } from '../services/found-item.service'
+import { submitClaim } from '../services/claim.service'
+import { getMyLostReports } from '../services/lost-report.service'
 
 const EMPTY_FORM = {
   title: '',
@@ -32,7 +33,6 @@ function getStoredRole() {
     const stored = JSON.parse(
       sessionStorage.getItem('blockfind_user') || '{}'
     )
-
     return String(
       stored.role ??
         stored.user?.role ??
@@ -46,11 +46,8 @@ function getStoredRole() {
 
 function formatDate(value) {
   if (!value) return 'Date not provided'
-
   const date = new Date(value)
-
   if (Number.isNaN(date.getTime())) return 'Date not provided'
-
   return new Intl.DateTimeFormat('en-IN', {
     day: 'numeric',
     month: 'short',
@@ -59,8 +56,7 @@ function formatDate(value) {
 }
 
 function getCategoryIcon(category = '') {
-  const value = category.toLowerCase()
-
+  const value = String(category || '').toLowerCase()
   if (value.includes('electronic')) return '💻'
   if (value.includes('bag') || value.includes('wallet')) return '🎒'
   if (value.includes('key')) return '🔑'
@@ -68,7 +64,6 @@ function getCategoryIcon(category = '') {
   if (value.includes('cloth')) return '👕'
   if (value.includes('accessor')) return '⌚'
   if (value.includes('book')) return '📚'
-
   return '📦'
 }
 
@@ -76,16 +71,14 @@ function getStatusStyle(status) {
   if (status === 'IN_CUSTODY') {
     return 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'
   }
-
   if (status === 'CLAIM_PENDING') {
     return 'bg-amber-50 text-amber-700 ring-amber-600/20'
   }
-
   return 'bg-slate-100 text-slate-600 ring-slate-500/20'
 }
 
 function formatStatus(status = '') {
-  return status
+  return String(status || '')
     .toLowerCase()
     .split('_')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -104,41 +97,35 @@ function StatCard({ label, value, description }) {
   )
 }
 
-function FoundItemCard({ item }) {
+function FoundItemCard({ item, canClaim, onClaim }) {
   return (
     <article className="group flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-blue-200 hover:shadow-md sm:p-6">
       <div className="flex items-start justify-between gap-3">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-2xl">
           {getCategoryIcon(item.category)}
         </div>
-
         <span
           className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${getStatusStyle(item.status)}`}
         >
           {formatStatus(item.status)}
         </span>
       </div>
-
       <div className="mt-5 flex-1">
         <p className="text-xs font-semibold uppercase tracking-wider text-blue-700">
           {item.category}
         </p>
-
         <h2 className="mt-2 break-words text-lg font-bold text-slate-900">
           {item.title}
         </h2>
-
         {(item.brand || item.model) && (
           <p className="mt-1 text-sm text-slate-500">
             {[item.brand, item.model].filter(Boolean).join(' · ')}
           </p>
         )}
-
         <p className="mt-3 min-h-10 text-sm leading-6 text-slate-600">
           {item.description || 'No additional description provided.'}
         </p>
       </div>
-
       <div className="mt-5 space-y-3 border-t border-slate-100 pt-4">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 text-base" aria-hidden="true">
@@ -151,7 +138,6 @@ function FoundItemCard({ item }) {
             </p>
           </div>
         </div>
-
         <div className="flex items-start gap-3">
           <span className="mt-0.5 text-base" aria-hidden="true">
             📅
@@ -164,16 +150,23 @@ function FoundItemCard({ item }) {
           </div>
         </div>
       </div>
+      {canClaim && item.status === 'IN_CUSTODY' && (
+        <button
+          type="button"
+          onClick={() => onClaim(item)}
+          className="mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-500/20"
+        >
+          Claim This Item
+        </button>
+      )}
     </article>
   )
 }
 
 export default function FoundItems() {
   const navigate = useNavigate()
-
   const [role] = useState(getStoredRole)
   const canRecord = role === 'VERIFIER' || role === 'ADMIN'
-
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -181,42 +174,41 @@ export default function FoundItems() {
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [reloadVersion, setReloadVersion] = useState(0)
-
   const [filters, setFilters] = useState({
     search: '',
     category: '',
     location: '',
   })
-
   const [appliedFilters, setAppliedFilters] = useState({
     search: '',
     category: '',
     location: '',
   })
-
   const [form, setForm] = useState(EMPTY_FORM)
-
+  const [selectedItem, setSelectedItem] = useState(null)
+  const [showClaimForm, setShowClaimForm] = useState(false)
+  const [lostReports, setLostReports] = useState([])
+  const [selectedLostReportId, setSelectedLostReportId] = useState('')
+  const [claimDetails, setClaimDetails] = useState('')
+  const [claimError, setClaimError] = useState('')
+  const [loadingLostReports, setLoadingLostReports] = useState(false)
+  const [claimSubmitting, setClaimSubmitting] = useState(false)
   useEffect(() => {
     let cancelled = false
-
     async function loadItems() {
       setLoading(true)
       setError('')
-
       try {
         const result = await getFoundItems(appliedFilters)
-
         if (!cancelled) {
           setItems(Array.isArray(result) ? result : [])
         }
       } catch (err) {
         if (cancelled) return
-
         if (err.status === 401) {
           navigate('/login', { replace: true })
           return
         }
-
         setError(
           err.message || 'Unable to load found items. Please try again.'
         )
@@ -226,21 +218,17 @@ export default function FoundItems() {
         }
       }
     }
-
     void loadItems()
-
     return () => {
       cancelled = true
     }
   }, [appliedFilters, reloadVersion, navigate])
-
   const categories = useMemo(() => {
     return [...new Set([
       ...COMMON_CATEGORIES,
       ...items.map((item) => item.category).filter(Boolean),
     ])].sort()
   }, [items])
-
   const stats = useMemo(() => {
     return {
       total: items.length,
@@ -252,7 +240,6 @@ export default function FoundItems() {
       ).length,
     }
   }, [items])
-
   function handleFilterSubmit(event) {
     event.preventDefault()
     setNotice('')
@@ -262,40 +249,107 @@ export default function FoundItems() {
       location: filters.location.trim(),
     })
   }
-
   function handleFilterReset() {
     const emptyFilters = {
       search: '',
       category: '',
       location: '',
     }
-
     setFilters(emptyFilters)
     setAppliedFilters(emptyFilters)
     setNotice('')
   }
-
   function handleFormChange(event) {
     const { name, value } = event.target
-
     setForm((current) => ({
       ...current,
       [name]: value,
     }))
   }
-
+  async function handleOpenClaim(item) {
+    if (role !== 'USER') return
+    if (item?.status !== 'IN_CUSTODY') {
+      setError('This item is not available to claim right now.')
+      return
+    }
+    setSelectedItem(item)
+    setShowClaimForm(true)
+    setLostReports([])
+    setSelectedLostReportId('')
+    setClaimDetails('')
+    setClaimError('')
+    setError('')
+    setNotice('')
+    setLoadingLostReports(true)
+    try {
+      const reports = await getMyLostReports()
+      setLostReports(
+        (Array.isArray(reports) ? reports : []).filter(
+          (report) => String(report.status || '').toUpperCase() === 'OPEN'
+        )
+      )
+    } catch (err) {
+      if (err.status === 401) {
+        navigate('/login', { replace: true })
+        return
+      }
+      setClaimError(err.message || 'Unable to load your lost reports.')
+    } finally {
+      setLoadingLostReports(false)
+    }
+  }
+  async function handleClaimSubmit(event) {
+    event.preventDefault()
+    if (!selectedItem || !selectedLostReportId) {
+      setClaimError('Please select the lost report related to this item.')
+      return
+    }
+    setClaimSubmitting(true)
+    setClaimError('')
+    setError('')
+    setNotice('')
+    try {
+      await submitClaim({
+        foundItemId: selectedItem.id,
+        lostReportId: selectedLostReportId,
+        details: claimDetails.trim() || null,
+      })
+      setShowClaimForm(false)
+      setSelectedItem(null)
+      setSelectedLostReportId('')
+      setClaimDetails('')
+      setNotice('Claim submitted successfully. It is now pending verifier review.')
+      setReloadVersion((version) => version + 1)
+    } catch (err) {
+      if (err.status === 401) {
+        navigate('/login', { replace: true })
+        return
+      }
+      const validationMessage = Array.isArray(err.details)
+        ? err.details.map((detail) => detail.message).filter(Boolean).join(' ')
+        : ''
+      setClaimError(
+        validationMessage || err.message || 'Unable to submit your claim. Please try again.'
+      )
+    } finally {
+      setClaimSubmitting(false)
+    }
+  }
+  function closeClaimForm() {
+    if (claimSubmitting) return
+    setShowClaimForm(false)
+    setSelectedItem(null)
+    setClaimError('')
+  }
   async function handleCreateSubmit(event) {
     event.preventDefault()
-
     if (!canRecord) {
       setError('Only verifiers and administrators can record found items.')
       return
     }
-
     setSubmitting(true)
     setError('')
     setNotice('')
-
     const payload = {
       title: form.title.trim(),
       category: form.category.trim(),
@@ -307,10 +361,8 @@ export default function FoundItems() {
         ? new Date(form.foundAt).toISOString()
         : null,
     }
-
     try {
       await createFoundItem(payload)
-
       setForm({ ...EMPTY_FORM })
       setShowForm(false)
       setNotice('Found item recorded successfully.')
@@ -320,18 +372,15 @@ export default function FoundItems() {
         navigate('/login', { replace: true })
         return
       }
-
       if (err.status === 403) {
         setError(
           'Your account does not have permission to record found items.'
         )
         return
       }
-
       const validationMessage = Array.isArray(err.details)
         ? err.details.map((detail) => detail.message).join(' ')
         : ''
-
       setError(
         validationMessage ||
           err.message ||
@@ -341,7 +390,6 @@ export default function FoundItems() {
       setSubmitting(false)
     }
   }
-
   return (
     <main className="space-y-7 pb-8">
       {/* Page heading */}
@@ -358,7 +406,6 @@ export default function FoundItems() {
             and help return lost property to its rightful owner.
           </p>
         </div>
-
         <button
           type="button"
           onClick={() => {
@@ -372,7 +419,6 @@ export default function FoundItems() {
           Refresh
         </button>
       </section>
-
       {/* Feedback messages */}
       {error && (
         <div
@@ -390,7 +436,6 @@ export default function FoundItems() {
           </button>
         </div>
       )}
-
       {notice && (
         <div
           role="status"
@@ -399,7 +444,6 @@ export default function FoundItems() {
           {notice}
         </div>
       )}
-
       {/* Overview statistics */}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
@@ -418,7 +462,6 @@ export default function FoundItems() {
           description="Items with claims in progress"
         />
       </section>
-
       {/* Search and filters */}
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
         <div className="mb-5">
@@ -429,7 +472,6 @@ export default function FoundItems() {
             Search by item name, description, brand, category, or location.
           </p>
         </div>
-
         <form onSubmit={handleFilterSubmit} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div>
@@ -454,7 +496,6 @@ export default function FoundItems() {
                 className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
               />
             </div>
-
             <div>
               <label
                 htmlFor="item-category"
@@ -481,7 +522,6 @@ export default function FoundItems() {
                 ))}
               </select>
             </div>
-
             <div>
               <label
                 htmlFor="item-location"
@@ -505,7 +545,6 @@ export default function FoundItems() {
               />
             </div>
           </div>
-
           <div className="flex flex-wrap gap-3">
             <button
               type="submit"
@@ -514,7 +553,6 @@ export default function FoundItems() {
             >
               Search items
             </button>
-
             <button
               type="button"
               onClick={handleFilterReset}
@@ -525,7 +563,6 @@ export default function FoundItems() {
           </div>
         </form>
       </section>
-
       {/* Role-aware recording section */}
       {canRecord ? (
         <section className="overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-white">
@@ -541,7 +578,6 @@ export default function FoundItems() {
                 Add details so the rightful owner can identify their property.
               </p>
             </div>
-
             <button
               type="button"
               onClick={() => {
@@ -555,7 +591,6 @@ export default function FoundItems() {
               {showForm ? 'Close form' : 'Report found item'}
             </button>
           </div>
-
           {showForm && (
             <form
               onSubmit={handleCreateSubmit}
@@ -581,7 +616,6 @@ export default function FoundItems() {
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                   />
                 </div>
-
                 <div>
                   <label
                     htmlFor="found-category"
@@ -607,7 +641,6 @@ export default function FoundItems() {
                     ))}
                   </datalist>
                 </div>
-
                 <div>
                   <label
                     htmlFor="found-location"
@@ -627,7 +660,6 @@ export default function FoundItems() {
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                   />
                 </div>
-
                 <div>
                   <label
                     htmlFor="found-date"
@@ -644,7 +676,6 @@ export default function FoundItems() {
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                   />
                 </div>
-
                 <div>
                   <label
                     htmlFor="found-brand"
@@ -662,7 +693,6 @@ export default function FoundItems() {
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                   />
                 </div>
-
                 <div>
                   <label
                     htmlFor="found-model"
@@ -680,7 +710,6 @@ export default function FoundItems() {
                     className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
                   />
                 </div>
-
                 <div className="md:col-span-2">
                   <label
                     htmlFor="found-description"
@@ -703,7 +732,6 @@ export default function FoundItems() {
                   </p>
                 </div>
               </div>
-
               <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-5">
                 <button
                   type="submit"
@@ -712,7 +740,6 @@ export default function FoundItems() {
                 >
                   {submitting ? 'Saving item...' : 'Save found item'}
                 </button>
-
                 <button
                   type="button"
                   disabled={submitting}
@@ -743,7 +770,6 @@ export default function FoundItems() {
           </div>
         </section>
       )}
-
       {/* Items listing */}
       <section>
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -755,14 +781,12 @@ export default function FoundItems() {
               Browse currently visible items reported to BlockFind.
             </p>
           </div>
-
           {!loading && (
             <span className="text-sm font-medium text-slate-500">
               {items.length} {items.length === 1 ? 'item' : 'items'}
             </span>
           )}
         </div>
-
         {loading ? (
           <div
             role="status"
@@ -821,11 +845,123 @@ export default function FoundItems() {
         ) : (
           <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
             {items.map((item) => (
-              <FoundItemCard key={item.id} item={item} />
+              <FoundItemCard
+                key={item.id}
+                item={item}
+                canClaim={role === 'USER'}
+                onClaim={handleOpenClaim}
+              />
             ))}
           </div>
         )}
       </section>
+      {showClaimForm && selectedItem && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) closeClaimForm()
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="claim-form-title"
+            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-blue-700">BLOCKFIND CLAIM</p>
+                <h2 id="claim-form-title" className="mt-1 text-xl font-bold text-slate-900">
+                  Claim {selectedItem.title}
+                </h2>
+                <p className="mt-2 text-sm text-slate-500">
+                  Select your lost report and explain how you identify this item.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeClaimForm}
+                disabled={claimSubmitting}
+                aria-label="Close claim form"
+                className="rounded-lg px-3 py-2 text-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+              >
+                ×
+              </button>
+            </div>
+            {claimError && (
+              <div role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {claimError}
+              </div>
+            )}
+            {loadingLostReports ? (
+              <p role="status" className="mt-6 text-sm text-slate-500">
+                Loading your open lost reports...
+              </p>
+            ) : (
+              <form onSubmit={handleClaimSubmit} className="mt-6 space-y-5">
+                <div>
+                  <label htmlFor="claim-lost-report" className="mb-2 block text-sm font-semibold text-slate-700">
+                    Select your lost report <span aria-hidden="true">*</span>
+                  </label>
+                  <select
+                    id="claim-lost-report"
+                    value={selectedLostReportId}
+                    onChange={(event) => setSelectedLostReportId(event.target.value)}
+                    required
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                  >
+                    <option value="">Choose a lost report</option>
+                    {lostReports.map((report) => (
+                      <option key={report.id} value={report.id}>
+                        {report.asset?.title || report.assetTitle || report.title || 'Lost item'}
+                        {' — '}
+                        {report.location || 'Location not provided'}
+                      </option>
+                    ))}
+                  </select>
+                  {lostReports.length === 0 && (
+                    <p className="mt-2 text-sm text-amber-700">
+                      You have no open lost reports. Register your asset and create a lost report before claiming this item.
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label htmlFor="claim-details" className="mb-2 block text-sm font-semibold text-slate-700">
+                    Explain your claim (optional)
+                  </label>
+                  <textarea
+                    id="claim-details"
+                    value={claimDetails}
+                    onChange={(event) => setClaimDetails(event.target.value)}
+                    maxLength={2000}
+                    rows={4}
+                    placeholder="Describe identifying details that support your claim..."
+                    className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10"
+                  />
+                  <p className="mt-1 text-right text-xs text-slate-400">{claimDetails.length}/2000</p>
+                </div>
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={closeClaimForm}
+                    disabled={claimSubmitting}
+                    className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={claimSubmitting || loadingLostReports || lostReports.length === 0}
+                    className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {claimSubmitting ? 'Submitting...' : 'Submit Claim'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </section>
+        </div>
+      )}
     </main>
   )
 }

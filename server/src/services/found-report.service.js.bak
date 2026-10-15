@@ -1,0 +1,86 @@
+
+import { apiRequest } from './api.js';
+
+// Submit a found-item report.
+export async function createFoundReport(report) {
+  const data = await apiRequest('/found-reports', {
+    method: 'POST',
+    body: JSON.stringify(report),
+  });
+
+  return data.report;
+}
+
+// List the authenticated user's own reports.
+export async function getMyFoundReports() {
+  const data = await apiRequest('/found-reports/my');
+  return data.reports ?? [];
+}
+
+// Resubmit a report after additional information is requested.
+export async function resubmitFoundReport(id, report) {
+  const data = await apiRequest(
+    `/found-reports/${encodeURIComponent(id)}/resubmit`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(report),
+    },
+  );
+
+  return data.report;
+}
+
+// List found reports for verifier/admin review.
+export async function getFoundReportReviewQueue(status = '') {
+  const params = new URLSearchParams();
+
+  if (status) {
+    params.set('status', status);
+  }
+
+  const query = params.toString();
+  const endpoint = `/found-reports/review-queue${
+    query ? `?${query}` : ''
+  }`;
+
+  const data = await apiRequest(endpoint);
+
+  if (!data || !Array.isArray(data.reports)) {
+    console.error('Unexpected found-report review response:', data);
+    throw new Error(
+      'The server returned an unexpected found-report review queue.',
+    );
+  }
+
+  return data.reports;
+}
+
+// Move a pending found report into review.
+export async function startFoundReportReview(id) {
+  return apiRequest(
+    `/found-reports/${encodeURIComponent(id)}/start-review`,
+    { method: 'POST' },
+  );
+}
+
+// Submit a decision for a report already under review.
+export async function decideFoundReport(
+  id,
+  decision,
+  reviewNotes = '',
+  confirmCustody = false,
+) {
+  return apiRequest(
+    `/found-reports/${encodeURIComponent(id)}/review`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({
+        decision,
+        reviewNotes: reviewNotes.trim() || undefined,
+        ...(decision === 'ACCEPTED_IN_CUSTODY'
+          ? { confirmCustody }
+          : {}),
+      }),
+    },
+  );
+}

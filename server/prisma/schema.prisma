@@ -7,39 +7,6 @@ datasource db {
   provider = "postgresql"
 }
 
-enum UserRole {
-  USER
-  VERIFIER
-  ADMIN
-}
-
-enum AssetStatus {
-  ACTIVE
-  ARCHIVED
-}
-
-enum LostReportStatus {
-  OPEN
-  CLAIM_PENDING
-  RESOLVED
-  CLOSED
-}
-
-enum FoundItemStatus {
-  IN_CUSTODY
-  CLAIM_PENDING
-  RELEASED
-  CLOSED
-}
-
-enum ClaimStatus {
-  PENDING
-  IN_REVIEW
-  APPROVED
-  REJECTED
-  CANCELLED
-}
-
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   name         String
@@ -50,13 +17,17 @@ model User {
   updatedAt    DateTime @updatedAt
 
   ownedAssets        Asset[]          @relation("AssetOwner")
-  lostReports        LostReport[]     @relation("LostReportReporter")
-  recordedFoundItems FoundItem[]      @relation("FoundItemRecorder")
+  auditLogs          AuditLog[]       @relation("AuditActor")
   claims             Claim[]          @relation("Claimant")
   reviewedClaims     Claim[]          @relation("ClaimReviewer")
-  recoveryRecords    RecoveryRecord[] @relation("RecoveryRecorder")
-  auditLogs          AuditLog[]       @relation("AuditActor")
   uploadedEvidence   ClaimEvidence[]  @relation("EvidenceUploader")
+  recordedFoundItems FoundItem[]      @relation("FoundItemRecorder")
+  lostReports        LostReport[]     @relation("LostReportReporter")
+  recoveryRecords    RecoveryRecord[] @relation("RecoveryRecorder")
+
+  submittedFoundReports FoundReport[] @relation("FoundReportReporter")
+  reviewedFoundReports  FoundReport[] @relation("FoundReportReviewer")
+  receivedFoundReports  FoundReport[] @relation("FoundReportCustodyReceiver")
 }
 
 model Asset {
@@ -64,15 +35,15 @@ model Asset {
   title        String
   description  String?
   category     String
-  brand        String?
-  model        String?
-  serialNumber String?
   status       AssetStatus @default(ACTIVE)
-  ownerId      String      @db.Uuid
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
+  brand        String?
+  model        String?
+  ownerId      String      @db.Uuid
+  serialNumber String?
 
-  owner       User         @relation("AssetOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  owner       User         @relation("AssetOwner", fields: [ownerId], references: [id])
   lostReports LostReport[]
 
   @@index([ownerId, status])
@@ -90,9 +61,9 @@ model LostReport {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  asset      Asset   @relation(fields: [assetId], references: [id], onDelete: Restrict)
-  reportedBy User    @relation("LostReportReporter", fields: [reportedById], references: [id], onDelete: Restrict)
   claims     Claim[]
+  asset      Asset   @relation(fields: [assetId], references: [id])
+  reportedBy User    @relation("LostReportReporter", fields: [reportedById], references: [id])
 
   @@index([assetId, status])
   @@index([reportedById, status])
@@ -113,31 +84,70 @@ model FoundItem {
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
-  recordedBy User            @relation("FoundItemRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
   claims     Claim[]
+  recordedBy User            @relation("FoundItemRecorder", fields: [recordedById], references: [id])
   recovery   RecoveryRecord?
+
+  sourceReport FoundReport? @relation("FoundReportItem")
 
   @@index([category, status])
   @@index([status, createdAt])
   @@index([recordedById])
 }
 
+model FoundReport {
+  id         String @id @default(uuid()) @db.Uuid
+  reporterId String @db.Uuid
+
+  title       String
+  description String?
+  category    String
+  brand       String?
+  model       String?
+  location    String
+  foundAt     DateTime?
+
+  status       FoundReportStatus @default(PENDING_REVIEW)
+  reviewNotes  String?
+  reviewedById String?           @db.Uuid
+  reviewedAt   DateTime?
+
+  custodyReceivedById String?   @db.Uuid
+  custodyReceivedAt   DateTime?
+
+  foundItemId String? @unique @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reporter          User  @relation("FoundReportReporter", fields: [reporterId], references: [id], onDelete: Restrict)
+  reviewedBy        User? @relation("FoundReportReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  custodyReceivedBy User? @relation("FoundReportCustodyReceiver", fields: [custodyReceivedById], references: [id], onDelete: Restrict)
+
+  foundItem FoundItem? @relation("FoundReportItem", fields: [foundItemId], references: [id], onDelete: SetNull)
+
+  @@index([reporterId, status])
+  @@index([status, createdAt])
+  @@index([reviewedById])
+  @@index([custodyReceivedById])
+}
+
 model Claim {
   id            String      @id @default(uuid()) @db.Uuid
-  lostReportId  String      @db.Uuid
-  foundItemId   String      @db.Uuid
   claimantId    String      @db.Uuid
   details       String?
   status        ClaimStatus @default(PENDING)
-  reviewedById  String?     @db.Uuid
-  reviewedAt    DateTime?
-  decisionNotes String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
+  decisionNotes String?
+  foundItemId   String      @db.Uuid
+  lostReportId  String      @db.Uuid
+  reviewedAt    DateTime?
+  reviewedById  String?     @db.Uuid
 
-  lostReport LostReport      @relation(fields: [lostReportId], references: [id], onDelete: Restrict)
-  foundItem  FoundItem       @relation(fields: [foundItemId], references: [id], onDelete: Restrict)
-  claimant   User            @relation("Claimant", fields: [claimantId], references: [id], onDelete: Restrict)
+  claimant   User            @relation("Claimant", fields: [claimantId], references: [id])
+  foundItem  FoundItem       @relation(fields: [foundItemId], references: [id])
+  lostReport LostReport      @relation(fields: [lostReportId], references: [id])
   reviewedBy User?           @relation("ClaimReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
   evidence   ClaimEvidence[]
   recovery   RecoveryRecord?
@@ -159,24 +169,24 @@ model ClaimEvidence {
   sha256Hash       String?
   createdAt        DateTime @default(now())
 
-  claim      Claim @relation(fields: [claimId], references: [id], onDelete: Restrict)
-  uploadedBy User  @relation("EvidenceUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  claim      Claim @relation(fields: [claimId], references: [id])
+  uploadedBy User  @relation("EvidenceUploader", fields: [uploadedById], references: [id])
 
   @@index([claimId])
 }
 
 model RecoveryRecord {
   id           String   @id @default(uuid()) @db.Uuid
-  claimId      String   @unique @db.Uuid
-  foundItemId  String   @unique @db.Uuid
   recordedById String   @db.Uuid
   recoveredAt  DateTime @default(now())
   notes        String?
   createdAt    DateTime @default(now())
+  claimId      String   @unique @db.Uuid
+  foundItemId  String   @unique @db.Uuid
 
-  claim      Claim     @relation(fields: [claimId], references: [id], onDelete: Restrict)
-  foundItem  FoundItem @relation(fields: [foundItemId], references: [id], onDelete: Restrict)
-  recordedBy User      @relation("RecoveryRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+  claim      Claim     @relation(fields: [claimId], references: [id])
+  foundItem  FoundItem @relation(fields: [foundItemId], references: [id])
+  recordedBy User      @relation("RecoveryRecorder", fields: [recordedById], references: [id])
 
   @@index([recordedById])
 }
@@ -190,9 +200,50 @@ model AuditLog {
   details    Json?
   createdAt  DateTime @default(now())
 
-  actor User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actor User? @relation("AuditActor", fields: [actorId], references: [id])
 
   @@index([actorId, createdAt])
   @@index([entityType, entityId])
   @@index([createdAt])
+}
+
+enum UserRole {
+  USER
+  ADMIN
+  VERIFIER
+}
+
+enum AssetStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum LostReportStatus {
+  OPEN
+  CLAIM_PENDING
+  RESOLVED
+  CLOSED
+}
+
+enum FoundItemStatus {
+  IN_CUSTODY
+  CLAIM_PENDING
+  RELEASED
+  CLOSED
+}
+
+enum FoundReportStatus {
+  PENDING_REVIEW
+  IN_REVIEW
+  NEEDS_INFO
+  REJECTED
+  ACCEPTED_IN_CUSTODY
+}
+
+enum ClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+  IN_REVIEW
 }

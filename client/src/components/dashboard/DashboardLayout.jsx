@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import {
   NavLink,
@@ -19,6 +20,7 @@ import {
   Menu,
   X,
   LogOut,
+  PackagePlus,
 } from 'lucide-react';
 
 import {
@@ -31,97 +33,62 @@ import {
 
 const NAVIGATION_BY_ROLE = {
   USER: [
+    { label: 'Overview', path: '/dashboard', icon: LayoutDashboard },
+    { label: 'My Assets', path: '/dashboard/assets', icon: Package },
+    { label: 'Lost Reports', path: '/dashboard/lost-assets', icon: Search },
+    { label: 'Found Items', path: '/dashboard/found-items', icon: PackageSearch },
     {
-      label: 'Overview',
-      path: '/dashboard',
-      icon: LayoutDashboard,
+      label: 'Report Found',
+      path: '/dashboard/report-found',
+      icon: PackagePlus,
     },
-    {
-      label: 'My Assets',
-      path: '/dashboard/assets',
-      icon: Package,
-    },
-    {
-      label: 'Lost Reports',
-      path: '/dashboard/lost-assets',
-      icon: Search,
-    },
-    {
-      label: 'Found Items',
-      path: '/dashboard/found-items',
-      icon: PackageSearch,
-    },
-    {
-      label: 'My Claims',
-      path: '/dashboard/claims',
-      icon: ClipboardList,
-    },
-    {
-      label: 'Recoveries',
-      path: '/dashboard/recoveries',
-      icon: History,
-    },
+    { label: 'My Claims', path: '/dashboard/claims', icon: ClipboardList },
+    { label: 'Recoveries', path: '/dashboard/recoveries', icon: History },
   ],
 
+  
   VERIFIER: [
+    { label: 'Overview', path: '/dashboard', icon: LayoutDashboard },
+    { label: 'Found Items', path: '/dashboard/found-items', icon: PackageSearch },
+    { label: 'Report Found', path: '/dashboard/report-found', icon: PackagePlus },
+    { label: 'Claim Review Queue', path: '/dashboard/review-queue', icon: ClipboardCheck },
     {
-      label: 'Overview',
-      path: '/dashboard',
-      icon: LayoutDashboard,
-    },
-    {
-      label: 'Found Items',
-      path: '/dashboard/found-items',
-      icon: PackageSearch,
-    },
-    {
-      label: 'Review Queue',
-      path: '/dashboard/review-queue',
-      icon: ClipboardCheck,
+      label: 'Found Report Review', path: '/dashboard/found-report-review-queue',icon: ClipboardCheck,
     },
   ],
 
-  ADMIN: [
+  
+ADMIN: [
+    { label: 'Admin Dashboard', path: '/dashboard/admin', icon: ShieldCheck },
+    { label: 'Overview', path: '/dashboard', icon: LayoutDashboard },
+    { label: 'Claim Review Queue', path: '/dashboard/review-queue', icon: ClipboardCheck },
     {
-      label: 'Admin Dashboard',
-      path: '/dashboard/admin',
-      icon: ShieldCheck,
-    },
-    {
-      label: 'Overview',
-      path: '/dashboard',
-      icon: LayoutDashboard,
-    },
-    {
-      label: 'Review Queue',
-      path: '/dashboard/review-queue',
+      label: 'Found Report Review',
+      path: '/dashboard/found-report-review-queue',
       icon: ClipboardCheck,
     },
-    {
-      label: 'Found Items',
-      path: '/dashboard/found-items',
-      icon: PackageSearch,
-    },
+    { label: 'Found Items', path: '/dashboard/found-items', icon: PackageSearch },
+    { label: 'Report Found', path: '/dashboard/report-found', icon: PackagePlus },
   ],
+
 };
 
 const ROLE_DESCRIPTIONS = {
-  USER: 'Manage your assets and recovery requests.',
-  VERIFIER: 'Review claims and manage found items.',
-  ADMIN: 'Monitor the platform and manage user access.',
+  USER: 'Manage your reports and recovery requests.',
+  VERIFIER: 'Verify reports and review ownership claims.',
+  ADMIN: 'Monitor platform activity and manage access.',
 };
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [user, setUser] = useState(() => readStoredUser());
+  const [user, setUser] = useState(() => readStoredUser() || {});
 
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Refresh the displayed account after login or logout.
   useEffect(() => {
     function refreshUser() {
-      setUser(readStoredUser());
+      setUser(readStoredUser() || {});
     }
 
     window.addEventListener(AUTH_CHANGED_EVENT, refreshUser);
@@ -133,13 +100,24 @@ export default function DashboardLayout() {
     };
   }, []);
 
-  // Unknown or missing roles must not receive staff/admin navigation.
-  const role = NAVIGATION_BY_ROLE[user.role] ? user.role : 'USER';
-  const navigation = NAVIGATION_BY_ROLE[role];
+  // Close the mobile sidebar whenever the route changes.
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
 
+  // Never display privileged navigation for an unknown role.
+  const storedRole = user.role?.toUpperCase();
+  const role = NAVIGATION_BY_ROLE[storedRole] ? storedRole : 'USER';
+
+  const navigation = NAVIGATION_BY_ROLE[role];
   const roleLabel = getRoleLabel(role);
+
   const displayName =
-    user.name?.trim() || user.email || 'BlockFind User';
+    user.name?.trim() ||
+    user.fullName?.trim() ||
+    user.email ||
+    'BlockFind User';
+
   const initial = displayName.charAt(0).toUpperCase() || 'B';
 
   const activeItem =
@@ -161,60 +139,67 @@ export default function DashboardLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-[#F5F7FB] text-slate-900">
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <button
           type="button"
-          aria-label="Close sidebar"
-          className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden"
+          aria-label="Close navigation backdrop"
+          className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-[2px] lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-72 flex-col border-r border-slate-200 bg-white transition-transform duration-300 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0`}
+        id="blockfind-sidebar"
+        className={`fixed inset-y-0 left-0 z-50 flex w-[270px] flex-col
+          border-r border-white/10 bg-[#101B2C] text-white
+          transition-transform duration-300 ease-out
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          lg:translate-x-0`}
       >
         {/* Brand */}
-        <div className="flex h-20 items-center gap-3 border-b border-slate-100 px-6">
+        <div className="flex h-[88px] shrink-0 items-center gap-3 border-b border-white/10 px-6">
           <Link
             to={getRoleHomePath(role)}
-            className="flex min-w-0 items-center gap-3"
+            className="flex min-w-0 items-center gap-3 rounded-lg"
+            aria-label="BlockFind home"
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-700 text-lg font-bold text-white">
-              B
-            </div>
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#65DCCB] text-[#102B35] shadow-lg shadow-black/10">
+              <PackageSearch size={24} strokeWidth={2.3} />
+            </span>
 
-            <div>
-              <p className="text-lg font-bold tracking-tight text-slate-950">
+            <span className="min-w-0">
+              <span className="block text-xl font-bold tracking-tight text-white">
                 BlockFind
-              </p>
-              <p className="text-xs text-slate-500">
-                Asset recovery platform
-              </p>
-            </div>
+              </span>
+              <span className="mt-0.5 block text-xs text-slate-400">
+                Find it. Return it.
+              </span>
+            </span>
           </Link>
 
           <button
             type="button"
             aria-label="Close navigation"
             onClick={() => setSidebarOpen(false)}
-            className="ml-auto rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"
+            className="ml-auto flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-white/10 hover:text-white lg:hidden"
           >
             <X size={20} />
           </button>
         </div>
 
         {/* Role-specific navigation */}
-        <div className="px-5 pt-7">
-          <p className="mb-3 px-3 text-xs font-bold tracking-widest text-slate-400">
-            {roleLabel.toUpperCase()} WORKSPACE
+        <div className="px-4 pt-8">
+          <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.19em] text-slate-500">
+            {roleLabel} workspace
           </p>
 
-          <nav aria-label={`${roleLabel} navigation`} className="space-y-1">
+          <nav
+            aria-label={`${roleLabel} navigation`}
+            className="space-y-1.5"
+          >
             {navigation.map((item) => {
               const Icon = item.icon;
 
@@ -225,14 +210,19 @@ export default function DashboardLayout() {
                   end={item.path === '/dashboard'}
                   onClick={() => setSidebarOpen(false)}
                   className={({ isActive }) =>
-                    `flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                    `group relative flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-medium transition-all duration-200 ${
                       isActive
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                        ? 'bg-[#203747] text-[#77E5D4] shadow-sm ring-1 ring-inset ring-white/5'
+                        : 'text-slate-400 hover:bg-white/[0.06] hover:text-white'
                     }`
                   }
                 >
-                  <Icon size={19} aria-hidden="true" />
+                  <Icon
+                    size={19}
+                    strokeWidth={1.9}
+                    aria-hidden="true"
+                    className="shrink-0"
+                  />
                   <span>{item.label}</span>
                 </NavLink>
               );
@@ -240,63 +230,67 @@ export default function DashboardLayout() {
           </nav>
         </div>
 
-        {/* Signed-in account */}
-        <div className="mt-auto border-t border-slate-100 p-5">
-          <div className="mb-4 rounded-xl bg-slate-50 p-4">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700">
-                {initial}
-              </div>
-
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">
-                  {displayName}
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  {roleLabel}
-                </p>
-              </div>
+        {/* Sidebar message */}
+        <div className="mt-auto px-4 pb-5">
+          <div className="mb-5 rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4">
+            <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-xl bg-[#203747] text-[#77E5D4]">
+              <ShieldCheck size={19} />
             </div>
-
-            {user.email && (
-              <p className="mt-3 break-all text-xs text-slate-500">
-                {user.email}
-              </p>
-            )}
+            <p className="text-sm font-semibold text-white">
+              Every item matters.
+            </p>
+            <p className="mt-1 text-xs leading-5 text-slate-400">
+              Help belongings find their way home.
+            </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-red-50 hover:text-red-700"
-          >
-            <LogOut size={19} />
-            Sign out
-          </button>
+          {/* Signed-in account */}
+          <div className="flex items-center gap-3 border-t border-white/10 pt-5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#65DCCB]/20 bg-[#203747] text-sm font-bold text-[#77E5D4]">
+              {initial}
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-white">
+                {displayName}
+              </p>
+              <p className="mt-1 text-xs text-slate-400">{roleLabel}</p>
+            </div>
+
+            <button
+              type="button"
+              aria-label="Sign out"
+              title="Sign out"
+              onClick={handleLogout}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-red-500/10 hover:text-red-300"
+            >
+              <LogOut size={18} />
+            </button>
+          </div>
         </div>
       </aside>
 
-      {/* Main content */}
-      <div className="min-h-screen lg:pl-72">
-        {/* Top navigation bar */}
-        <header className="sticky top-0 z-30 flex h-20 items-center justify-between gap-4 border-b border-slate-200 bg-white/90 px-5 backdrop-blur-xl sm:px-8">
+      {/* Main application area */}
+      <div className="min-h-screen lg:pl-[270px]">
+        {/* Topbar */}
+        <header className="sticky top-0 z-30 flex h-[76px] items-center justify-between gap-4 border-b border-slate-200/80 bg-white/90 px-4 backdrop-blur-xl sm:px-7 lg:px-9">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               aria-label="Open navigation"
+              aria-controls="blockfind-sidebar"
               aria-expanded={sidebarOpen}
               onClick={() => setSidebarOpen(true)}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 lg:hidden"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 lg:hidden"
             >
               <Menu size={21} />
             </button>
 
             <div className="min-w-0">
-              <h1 className="truncate text-sm font-semibold text-slate-900 sm:text-base">
+              <p className="truncate text-base font-bold tracking-tight text-slate-900 sm:text-lg">
                 {activeItem.label}
-              </h1>
-
-              <p className="hidden text-xs text-slate-500 sm:block">
+              </p>
+              <p className="mt-0.5 hidden truncate text-xs text-slate-500 sm:block">
                 {ROLE_DESCRIPTIONS[role]}
               </p>
             </div>
@@ -304,26 +298,25 @@ export default function DashboardLayout() {
 
           <div className="flex shrink-0 items-center gap-3">
             <div className="hidden text-right sm:block">
-              <p className="max-w-40 truncate text-sm font-semibold text-slate-800">
+              <p className="max-w-44 truncate text-sm font-semibold text-slate-800">
                 {displayName}
               </p>
-
-              <span className="inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                {roleLabel}
-              </span>
+              <p className="mt-1 text-xs text-slate-500">{roleLabel}</p>
             </div>
 
             <div
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700"
-              aria-label={`User avatar: ${displayName}`}
-              title={`${displayName} · ${roleLabel}`}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#BFEDE5] bg-[#E7F8F4] text-sm font-bold text-[#176B60]"
+              role="img"
+              aria-label={`Account avatar for ${displayName}`}
+              title={`${displayName} - ${roleLabel}`}
             >
               {initial}
             </div>
           </div>
         </header>
 
-        <main className="mx-auto max-w-7xl p-5 sm:p-8">
+        {/* Page content */}
+        <main className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-8">
           <Outlet />
         </main>
       </div>

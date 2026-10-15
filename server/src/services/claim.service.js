@@ -63,10 +63,13 @@ export class ClaimServiceError extends Error {
   }
 }
 
+
 async function runSerializableTransaction(callback) {
   try {
     return await prisma.$transaction(callback, {
       isolationLevel: 'Serializable',
+      maxWait: 20_000,
+      timeout: 30_000,
     });
   } catch (error) {
     if (error?.code === 'P2034') {

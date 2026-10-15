@@ -1,4 +1,3 @@
-
 import { apiRequest } from './api.js'
 
 // List claims awaiting review or currently under review.
@@ -14,7 +13,12 @@ export async function getReviewQueue(status = '') {
 
   const data = await apiRequest(endpoint)
 
-  return Array.isArray(data.claims) ? data.claims : []
+  if (!data || !Array.isArray(data.claims)) {
+    console.error('Unexpected claim review queue response:', data)
+    throw new Error('The server returned an unexpected claim queue response.')
+  }
+
+  return data.claims
 }
 
 // Move a pending claim into review.

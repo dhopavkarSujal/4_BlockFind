@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.routes.js'
 import assetRoutes from './routes/asset.routes.js';
 import lostReportRoutes from './routes/lost-report.routes.js';
 import foundItemRoutes from './routes/found-item.routes.js';
+import foundReportRoutes from './routes/found-report.routes.js';
 import claimRoutes from './routes/claim.routes.js';
 import recoveryRoutes from './routes/recovery.routes.js';
 import auditLogRoutes from './routes/audit-log.routes.js';
@@ -51,6 +52,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/assets', assetRoutes);
 app.use('/api/lost-reports', lostReportRoutes);
 app.use('/api/found-items', foundItemRoutes);
+app.use('/api/found-reports', foundReportRoutes);
 app.use('/api/claims', claimRoutes);
 app.use('/api/recoveries', recoveryRoutes);
 app.use('/api/audit-logs', auditLogRoutes);

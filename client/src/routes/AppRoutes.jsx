@@ -1,20 +1,25 @@
+
 import { Navigate, Route, Routes } from 'react-router-dom';
 
+// Public pages
 import Landing from '../pages/Landing.jsx';
 import Login from '../pages/Login.jsx';
 import Register from '../pages/Register.jsx';
-import Dashboard from '../pages/Dashboard.jsx';
 
-import DashboardLayout from '../components/dashboard/DashboardLayout.jsx';
-
+// Dashboard pages
+import RoleDashboard from '../pages/RoleDashboard.jsx';
+import AdminDashboard from '../pages/AdminDashboard.jsx';
 import RegisterAsset from '../pages/RegisterAsset.jsx';
 import LostAssets from '../pages/LostAssets.jsx';
 import FoundItems from '../pages/FoundItems.jsx';
+import ReportFound from '../pages/ReportFound.jsx';
 import MyClaims from '../pages/MyClaims.jsx';
 import Recoveries from '../pages/Recoveries.jsx';
 import ReviewQueue from '../pages/ReviewQueue.jsx';
-import AdminDashboard from '../pages/AdminDashboard.jsx';
+import FoundReportReviewQueue from '../pages/FoundReportReviewQueue.jsx';
 
+// Shared layout and route guards
+import DashboardLayout from '../components/dashboard/DashboardLayout.jsx';
 import RequireRole from './RequireRole.jsx';
 
 import {
@@ -23,7 +28,7 @@ import {
   readStoredUser,
 } from '../utils/auth-session.js';
 
-// Protect pages that require login.
+// Require authentication for protected routes.
 function RequireAuth({ children }) {
   if (!getStoredToken()) {
     return <Navigate to="/login" replace />;
@@ -32,14 +37,14 @@ function RequireAuth({ children }) {
   return children;
 }
 
-// Prevent logged-in users from returning to login/register pages.
+// Redirect authenticated users away from guest-only pages.
 function GuestOnly({ children }) {
   if (getStoredToken()) {
     const user = readStoredUser();
 
     return (
       <Navigate
-        to={getRoleHomePath(user.role)}
+        to={getRoleHomePath(user?.role)}
         replace
       />
     );
@@ -51,7 +56,7 @@ function GuestOnly({ children }) {
 export default function AppRoutes() {
   return (
     <Routes>
-      {/* Public routes */}
+      {/* Public pages */}
       <Route path="/" element={<Landing />} />
 
       <Route
@@ -72,7 +77,7 @@ export default function AppRoutes() {
         }
       />
 
-      {/* Protected dashboard and shared layout */}
+      {/* Authenticated pages share one dashboard layout. */}
       <Route
         path="/dashboard"
         element={
@@ -81,65 +86,43 @@ export default function AppRoutes() {
           </RequireAuth>
         }
       >
-        {/* Available to all authenticated roles */}
-        <Route index element={<Dashboard />} />
+        {/* Role-specific landing page */}
+        <Route index element={<RoleDashboard />} />
 
-        <Route
-          path="found-items"
-          element={<FoundItems />}
-        />
+        {/* Pages available to all authenticated roles */}
+        <Route path="found-items" element={<FoundItems />} />
+        <Route path="report-found" element={<ReportFound />} />
 
-        {/* USER-only pages */}
+        {/* User-only pages */}
         <Route element={<RequireRole allowedRoles={['USER']} />}>
-          <Route
-            path="assets"
-            element={<RegisterAsset />}
-          />
-
-          <Route
-            path="lost-assets"
-            element={<LostAssets />}
-          />
-
-          <Route
-            path="claims"
-            element={<MyClaims />}
-          />
-
-          <Route
-            path="recoveries"
-            element={<Recoveries />}
-          />
+          <Route path="assets" element={<RegisterAsset />} />
+          <Route path="lost-assets" element={<LostAssets />} />
+          <Route path="claims" element={<MyClaims />} />
+          <Route path="recoveries" element={<Recoveries />} />
         </Route>
 
-        {/* VERIFIER and ADMIN pages */}
+        {/* Verifier and Admin pages */}
         <Route
           element={
             <RequireRole allowedRoles={['VERIFIER', 'ADMIN']} />
           }
         >
+          <Route path="review-queue" element={<ReviewQueue />} />
+
           <Route
-            path="review-queue"
-            element={<ReviewQueue />}
+            path="found-report-review-queue"
+            element={<FoundReportReviewQueue />}
           />
         </Route>
 
-        {/* ADMIN-only pages */}
-        <Route
-          element={<RequireRole allowedRoles={['ADMIN']} />}
-        >
-          <Route
-            path="admin"
-            element={<AdminDashboard />}
-          />
+        {/* Admin-only pages */}
+        <Route element={<RequireRole allowedRoles={['ADMIN']} />}>
+          <Route path="admin" element={<AdminDashboard />} />
         </Route>
       </Route>
 
-      {/* Unknown routes */}
-      <Route
-        path="*"
-        element={<Navigate to="/" replace />}
-      />
+      {/* Redirect unknown routes */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
