@@ -1,6 +1,6 @@
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api';
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:5003/api';
 
 async function request(endpoint, options = {}) {
   const token = sessionStorage.getItem('blockfind_token');
